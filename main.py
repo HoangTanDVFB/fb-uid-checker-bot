@@ -1,5 +1,3 @@
-Python 3.13.9 (tags/v3.13.9:8183fa5, Oct 14 2025, 14:09:13) [MSC v.1944 64 bit (AMD64)] on win32
-Enter "help" below or click "Help" above for more information.
 import requests, json, asyncio, re, threading
 from flask import Flask
 from telegram import (
@@ -178,3 +176,4 @@ async def auto_check(app):
 ... 
 ... if __name__ == "__main__":
 ...     asyncio.run(main())
+
