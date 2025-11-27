@@ -15,14 +15,13 @@ from datetime import datetime, timedelta, timezone
 
 # --------------------------
 BOT_TOKEN = "7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o"
-CHECK_INTERVAL = 300  # 5 phút
+CHECK_INTERVAL = 300
 UID_FILE = "uids.json"
 PORT = 8080
 # --------------------------
 
 VN_TZ = timezone(timedelta(hours=7))
 
-# ========== FLASK WEB SERVER (Keep Alive) ==========
 app_flask = Flask(__name__)
 
 @app_flask.route("/")
@@ -32,7 +31,6 @@ def home():
 def run_flask():
     app_flask.run(host="0.0.0.0", port=PORT)
 
-# ========== CÁC HÀM HỖ TRỢ ==========
 def load_uids():
     try:
         with open(UID_FILE, "r") as f:
@@ -55,10 +53,9 @@ def check_facebook_uid(uid: str) -> bool:
 def now_vn():
     return datetime.now(VN_TZ).strftime("%H:%M:%S %d/%m/%Y")
 
-# ========== LỆNH TELEGRAM ==========
 async def theodoi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("⚠️ Nhập UID cần theo dõi\nVí dụ: /theodoi 1000123456789 note=Mùi Unlock")
+        await update.message.reply_text("⚠️ Nhập UID cần theo dõi\nVí dụ: /theodoi 1000123456789 note=test")
         return
 
     text = " ".join(context.args)
@@ -108,7 +105,6 @@ async def danhsach(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"🔹 {uid}: {info['status']} ({info['note']})\n"
     await update.message.reply_text(msg)
 
-# ========== XỬ LÝ NÚT BẤM ==========
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -123,10 +119,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"🚫 Đã dừng theo dõi UID: {uid}")
         else:
             await query.edit_message_text("❗ UID này không còn trong danh sách.")
-    elif query.data.startswith("keep_"):
-        await query.answer("✅ Vẫn đang theo dõi UID này!", show_alert=True)
 
-# ========== KIỂM TRA UID TỰ ĐỘNG ==========
 async def auto_check(app):
     while True:
         await asyncio.sleep(CHECK_INTERVAL)
@@ -135,46 +128,43 @@ async def auto_check(app):
             for uid, info in list(uids.items()):
                 old_status = info["status"]
                 note = info.get("note", "Không có")
-                 new_status = "LIVE" if check_facebook_uid(uid) else "DIE"
- 
-                 if new_status != old_status:
-                     data[user_id][uid]["status"] = new_status
-                     save_uids(data)
- 
-                     keyboard = InlineKeyboardMarkup([
-                         [
-                             InlineKeyboardButton("✅ Tiếp tục theo dõi", callback_data=f"keep_{uid}"),
-                             InlineKeyboardButton("❌ Dừng theo dõi", callback_data=f"stop_{uid}")
-                         ]
-                     ])
- 
-                     text = (
-                         f"🔔 UID {uid} đã đổi trạng thái!\n"
-                         f"📌 Ghi chú: {note}\n"
-                         f"📡 Trạng thái mới: {new_status}\n"
-                         f"🕒 Cập nhật: {now_vn()}"
-                     )
- 
-                     try:
-                         await app.bot.send_message(chat_id=int(user_id), text=text, reply_markup=keyboard)
-                     except:
-                         pass
- 
- # ========== CHẠY BOT ==========
- async def main():
-     # Chạy Flask song song để giữ bot sống
-     threading.Thread(target=run_flask).start()
- 
-     app = ApplicationBuilder().token(BOT_TOKEN).build()
-     app.add_handler(CommandHandler("theodoi", theodoi))
-     app.add_handler(CommandHandler("danhsach", danhsach))
-     app.add_handler(CallbackQueryHandler(handle_buttons))
- 
-     asyncio.create_task(auto_check(app))
-     print("🤖 Bot đang chạy... (Ctrl+C để dừng)")
-     await app.run_polling()
- 
- if __name__ == "__main__":
-     asyncio.run(main())
 
+                new_status = "LIVE" if check_facebook_uid(uid) else "DIE"
 
+                if new_status != old_status:
+                    data[user_id][uid]["status"] = new_status
+                    save_uids(data)
+
+                    keyboard = InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("✅ Tiếp tục theo dõi", callback_data=f"keep_{uid}"),
+                            InlineKeyboardButton("❌ Dừng theo dõi", callback_data=f"stop_{uid}")
+                        ]
+                    ])
+
+                    text = (
+                        f"🔔 UID {uid} đã đổi trạng thái!\n"
+                        f"📌 Ghi chú: {note}\n"
+                        f"📡 Trạng thái mới: {new_status}\n"
+                        f"🕒 Cập nhật: {now_vn()}"
+                    )
+
+                    try:
+                        await app.bot.send_message(chat_id=int(user_id), text=text, reply_markup=keyboard)
+                    except:
+                        pass
+
+async def main():
+    threading.Thread(target=run_flask).start()
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("theodoi", theodoi))
+    app.add_handler(CommandHandler("danhsach", danhsach))
+    app.add_handler(CallbackQueryHandler(handle_buttons))
+
+    asyncio.create_task(auto_check(app))
+    print("🤖 Bot đang chạy...")
+    await app.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
