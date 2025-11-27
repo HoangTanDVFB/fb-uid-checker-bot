@@ -1,4 +1,4 @@
-import requests, json, asyncio, re, threading
+import requests, json, re, threading, time
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -15,7 +15,7 @@ CHECK_INTERVAL = 300
 UID_FILE = "uids.json"
 PORT = 8080
 VN_TZ = timezone(timedelta(hours=7))
-# ==========================================
+# =========================================
 
 # ========== FLASK KEEP ALIVE ==========
 app_flask = Flask(__name__)
@@ -50,9 +50,9 @@ def check_facebook_uid(uid: str) -> bool:
 def now_vn():
     return datetime.now(VN_TZ).strftime("%H:%M:%S %d/%m/%Y")
 
-# ========== TELEGRAM COMMAND ==========
+# ========== TELEGRAM ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot đã sẵn sàng!\nDùng /theodoi <uid> note=abc")
+    await update.message.reply_text("✅ Bot đã sẵn sàng!")
 
 async def theodoi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -123,10 +123,10 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("keep_"):
         await query.answer("✅ Vẫn theo dõi!", show_alert=True)
 
-# ========== AUTO CHECK ==========
-async def auto_check(app):
+# ========== AUTO CHECK (CHẠY BACKGROUND = THREAD, KHÔNG DÙNG ASYNC LOOP) ==========
+def auto_check_loop(app):
     while True:
-        await asyncio.sleep(CHECK_INTERVAL)
+        time.sleep(CHECK_INTERVAL)
         data = load_uids()
 
         for user_id, uids in data.items():
@@ -154,7 +154,7 @@ async def auto_check(app):
                     )
 
                     try:
-                        await app.bot.send_message(
+                        app.bot.send_message(
                             chat_id=int(user_id),
                             text=text,
                             reply_markup=keyboard
@@ -162,10 +162,12 @@ async def auto_check(app):
                     except:
                         pass
 
-# ========== MAIN ==========
-async def main():
+# ========== MAIN (KHÔNG DÙNG asyncio.run NỮA) ==========
+def main():
+    # Flask
     threading.Thread(target=run_flask, daemon=True).start()
 
+    # Telegram bot
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -173,11 +175,11 @@ async def main():
     app.add_handler(CommandHandler("danhsach", danhsach))
     app.add_handler(CallbackQueryHandler(handle_buttons))
 
-    asyncio.create_task(auto_check(app))
+    # Auto check
+    threading.Thread(target=auto_check_loop, args=(app,), daemon=True).start()
 
-    print("✅ BOT ĐÃ CHẠY OK")
-    await app.run_polling()
+    print("✅ BOT ĐÃ CHẠY ỔN ĐỊNH")
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    main()
