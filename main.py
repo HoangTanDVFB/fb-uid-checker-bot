@@ -1,3 +1,4 @@
+print("🔥 MAIN.PY HAS BEEN EXECUTED 🔥")
 import requests, json, asyncio, re, threading
 from flask import Flask
 from telegram import (
@@ -168,3 +169,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
