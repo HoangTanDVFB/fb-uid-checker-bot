@@ -10,7 +10,7 @@ from telegram.ext import (
 from datetime import datetime, timedelta, timezone
 
 # ================= CONFIG =================
-BOT_TOKEN = "DÁN TOKEN CỦA MÀY VÀO ĐÂY"
+BOT_TOKEN = "7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o"
 CHECK_INTERVAL = 300
 UID_FILE = "uids.json"
 PORT = 8080
@@ -180,3 +180,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
