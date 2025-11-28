@@ -8,10 +8,9 @@ from telegram.ext import (
     CallbackQueryHandler
 )
 from datetime import datetime, timedelta, timezone
-import threading
 
 # ================= CONFIG =================
-BOT_TOKEN = "7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o"
+BOT_TOKEN = "7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o"   # <-- ĐỔI TOKEN Ở ĐÂY
 CHECK_INTERVAL = 120
 UID_FILE = "uids.json"
 PORT = 8080
@@ -43,34 +42,37 @@ def save_uids(data):
         with open(UID_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
+def now_vn():
+    return datetime.now(VN_TZ).strftime("%H:%M:%S %d/%m/%Y")
+
+# ========== CHECK FACEBOOK (AVATAR + M.FACEBOOK) ==========
 def check_facebook_live(uid: str) -> bool:
     headers = {
         "User-Agent": "Mozilla/5.0 (Linux; Android 13)",
         "Accept-Language": "vi-VN,vi;q=0.9"
     }
 
-    # ========== CÁCH 1: CHECK AVATAR GRAPH ==========
+    # ===== CÁCH 1: CHECK AVATAR =====
     try:
         url_avatar = f"https://graph.facebook.com/{uid}/picture?redirect=0"
         r1 = requests.get(url_avatar, headers=headers, timeout=10)
+
         if r1.status_code == 404:
-            return False  # DIE chắc chắn
+            return False
 
         data = r1.json()
         if "data" in data:
-            if data["data"].get("is_silhouette") == False:
-                return True  # LIVE chuẩn
-        # nếu silhouette == True → chưa kết luận, xuống bước 2
+            if data["data"].get("is_silhouette") is False:
+                return True
     except:
         pass
 
-    # ========== CÁCH 2: CHECK BẰNG M.FACEBOOK ==========
+    # ===== CÁCH 2: CHECK M.FACEBOOK =====
     try:
         url_mb = f"https://m.facebook.com/profile.php?id={uid}"
         r2 = requests.get(url_mb, headers=headers, timeout=10, allow_redirects=True)
         text = r2.text.lower()
 
-        # ----- DIE / DEAD -----
         die_keywords = [
             "this content isn't available",
             "tài khoản bị vô hiệu hóa",
@@ -80,11 +82,11 @@ def check_facebook_live(uid: str) -> bool:
             "page isn't available",
             "content not found"
         ]
+
         for k in die_keywords:
             if k in text:
                 return False
 
-        # ----- LIVE -----
         if f'content="fb://profile/{uid}"' in text:
             return True
 
@@ -94,16 +96,12 @@ def check_facebook_live(uid: str) -> bool:
         if "timeline" in text or "bạn bè" in text:
             return True
 
-        # Nếu redirect về checkpoint → vẫn xem là LIVE
         if "checkpoint" in text:
             return True
 
-        # Không thấy dấu hiệu DIE rõ ràng → mặc định LIVE (chống DIE giả)
         return True
-
     except:
         return False
-
 
 # ========== TELEGRAM ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -111,18 +109,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def theodoi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("⚠️ Ví dụ:\n/theodoi tuanpham note=test")
+        await update.message.reply_text("⚠️ Ví dụ:\n/theodoi 1000123456789 note=test")
         return
 
     text = " ".join(context.args)
 
-    # Nhận UID / username / profile.php?id=
-    uid_match = re.search(r"([a-zA-Z0-9\.=_%\-]+)", text)
+    uid_match = re.search(r"(profile\.php\?id=\d+|\d{5,}|[a-zA-Z0-9\.]+)", text)
     if not uid_match:
         await update.message.reply_text("❗ ID không hợp lệ.")
         return
 
     uid = uid_match.group()
+
     note_match = re.search(r"note=(.*)", text)
     note = note_match.group(1).strip() if note_match else "Không có"
 
@@ -238,4 +236,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
