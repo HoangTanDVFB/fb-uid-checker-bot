@@ -43,44 +43,67 @@ def save_uids(data):
         with open(UID_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-# ✅ HÀM CHECK MỚI BẰNG m.facebook.com + avatar
-def check_facebook_live(target: str) -> bool:
-    url = f"https://m.facebook.com/{target}"
+def check_facebook_live(uid: str) -> bool:
     headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10)"
+        "User-Agent": "Mozilla/5.0 (Linux; Android 13)",
+        "Accept-Language": "vi-VN,vi;q=0.9"
     }
 
+    # ========== CÁCH 1: CHECK AVATAR GRAPH ==========
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        url_avatar = f"https://graph.facebook.com/{uid}/picture?redirect=0"
+        r1 = requests.get(url_avatar, headers=headers, timeout=10)
+        if r1.status_code == 404:
+            return False  # DIE chắc chắn
 
-        if r.status_code != 200:
-            return False
+        data = r1.json()
+        if "data" in data:
+            if data["data"].get("is_silhouette") == False:
+                return True  # LIVE chuẩn
+        # nếu silhouette == True → chưa kết luận, xuống bước 2
+    except:
+        pass
 
-        text = r.text.lower()
+    # ========== CÁCH 2: CHECK BẰNG M.FACEBOOK ==========
+    try:
+        url_mb = f"https://m.facebook.com/profile.php?id={uid}"
+        r2 = requests.get(url_mb, headers=headers, timeout=10, allow_redirects=True)
+        text = r2.text.lower()
 
+        # ----- DIE / DEAD -----
         die_keywords = [
-            "content not found",
+            "this content isn't available",
+            "tài khoản bị vô hiệu hóa",
+            "nội dung không khả dụng",
+            "tưởng nhớ",
+            "memorialized",
             "page isn't available",
-            "trang bạn tìm không tồn tại",
-            "checkpoint",
-            "login"
+            "content not found"
         ]
-
         for k in die_keywords:
             if k in text:
                 return False
 
-        # Có hình ảnh (avatar) => LIVE
-        if "<img" in text:
+        # ----- LIVE -----
+        if f'content="fb://profile/{uid}"' in text:
             return True
 
+        if "add friend" in text or "thêm bạn bè" in text:
+            return True
+
+        if "timeline" in text or "bạn bè" in text:
+            return True
+
+        # Nếu redirect về checkpoint → vẫn xem là LIVE
+        if "checkpoint" in text:
+            return True
+
+        # Không thấy dấu hiệu DIE rõ ràng → mặc định LIVE (chống DIE giả)
         return True
 
     except:
         return False
 
-def now_vn():
-    return datetime.now(VN_TZ).strftime("%H:%M:%S %d/%m/%Y")
 
 # ========== TELEGRAM ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -215,3 +238,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
