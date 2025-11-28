@@ -8,13 +8,15 @@ from telegram.ext import (
     CallbackQueryHandler
 )
 from datetime import datetime, timedelta, timezone
+import threading
 
 # ================= CONFIG =================
 BOT_TOKEN = "7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o"
-CHECK_INTERVAL = 300
+CHECK_INTERVAL = 120
 UID_FILE = "uids.json"
 PORT = 8080
 VN_TZ = timezone(timedelta(hours=7))
+lock = threading.Lock()
 # =========================================
 
 # ========== FLASK KEEP ALIVE ==========
@@ -22,7 +24,7 @@ app_flask = Flask(__name__)
 
 @app_flask.route("/")
 def home():
-    return "✅ Telegram UID Checker Bot is running!", 200
+    return "✅ Telegram Checker Bot is running!", 200
 
 def run_flask():
     app_flask.run(host="0.0.0.0", port=PORT)
@@ -30,20 +32,50 @@ def run_flask():
 # ========== HỖ TRỢ ==========
 def load_uids():
     try:
-        with open(UID_FILE, "r") as f:
-            return json.load(f)
+        with lock:
+            with open(UID_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
     except:
         return {}
 
 def save_uids(data):
-    with open(UID_FILE, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    with lock:
+        with open(UID_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
-def check_facebook_uid(uid: str) -> bool:
-    url = f"https://graph.facebook.com/{uid}"
+# ✅ HÀM CHECK MỚI BẰNG m.facebook.com + avatar
+def check_facebook_live(target: str) -> bool:
+    url = f"https://m.facebook.com/{target}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10)"
+    }
+
     try:
-        r = requests.get(url, timeout=5)
-        return r.status_code == 200 and "id" in r.text
+        r = requests.get(url, headers=headers, timeout=10)
+
+        if r.status_code != 200:
+            return False
+
+        text = r.text.lower()
+
+        die_keywords = [
+            "content not found",
+            "page isn't available",
+            "trang bạn tìm không tồn tại",
+            "checkpoint",
+            "login"
+        ]
+
+        for k in die_keywords:
+            if k in text:
+                return False
+
+        # Có hình ảnh (avatar) => LIVE
+        if "<img" in text:
+            return True
+
+        return True
+
     except:
         return False
 
@@ -56,13 +88,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def theodoi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("⚠️ Ví dụ:\n/theodoi 1000123456789 note=test")
+        await update.message.reply_text("⚠️ Ví dụ:\n/theodoi tuanpham note=test")
         return
 
     text = " ".join(context.args)
-    uid_match = re.search(r"\d{5,}", text)
+
+    # Nhận UID / username / profile.php?id=
+    uid_match = re.search(r"([a-zA-Z0-9\.=_%\-]+)", text)
     if not uid_match:
-        await update.message.reply_text("❗ UID không hợp lệ.")
+        await update.message.reply_text("❗ ID không hợp lệ.")
         return
 
     uid = uid_match.group()
@@ -74,7 +108,7 @@ async def theodoi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in data:
         data[user_id] = {}
 
-    status = "LIVE" if check_facebook_uid(uid) else "DIE"
+    status = "LIVE" if check_facebook_live(uid) else "DIE"
     data[user_id][uid] = {"status": status, "note": note}
     save_uids(data)
 
@@ -86,7 +120,7 @@ async def theodoi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     msg = (
-        f"👤 UID: {uid}\n"
+        f"👤 ID: {uid}\n"
         f"📌 Ghi chú: {note}\n"
         f"📡 Trạng thái: {status}\n"
         f"🕒 Thời gian: {now_vn()}"
@@ -98,10 +132,10 @@ async def danhsach(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_uids().get(user_id, {})
     if not data:
-        await update.message.reply_text("📭 Chưa có UID nào.")
+        await update.message.reply_text("📭 Chưa có mục nào.")
         return
 
-    msg = "📋 Danh sách UID:\n\n"
+    msg = "📋 Danh sách đang theo dõi:\n\n"
     for uid, info in data.items():
         msg += f"🔹 {uid}: {info['status']} ({info['note']})\n"
     await update.message.reply_text(msg)
@@ -118,12 +152,12 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id in data and uid in data[user_id]:
             del data[user_id][uid]
             save_uids(data)
-            await query.edit_message_text(f"🚫 Đã dừng UID {uid}")
+            await query.edit_message_text(f"🚫 Đã dừng theo dõi {uid}")
 
     elif query.data.startswith("keep_"):
-        await query.answer("✅ Vẫn theo dõi!", show_alert=True)
+        await query.answer("✅ Vẫn tiếp tục theo dõi!", show_alert=True)
 
-# ========== AUTO CHECK (CHẠY BACKGROUND = THREAD, KHÔNG DÙNG ASYNC LOOP) ==========
+# ========== AUTO CHECK ==========
 def auto_check_loop(app):
     while True:
         time.sleep(CHECK_INTERVAL)
@@ -133,7 +167,7 @@ def auto_check_loop(app):
             for uid, info in list(uids.items()):
                 old_status = info["status"]
                 note = info["note"]
-                new_status = "LIVE" if check_facebook_uid(uid) else "DIE"
+                new_status = "LIVE" if check_facebook_live(uid) else "DIE"
 
                 if new_status != old_status:
                     data[user_id][uid]["status"] = new_status
@@ -147,7 +181,8 @@ def auto_check_loop(app):
                     ])
 
                     text = (
-                        f"🔔 UID {uid} đổi trạng thái!\n"
+                        f"🔔 TÀI KHOẢN ĐỔI TRẠNG THÁI!\n\n"
+                        f"👤 {uid}\n"
                         f"📌 {note}\n"
                         f"📡 {old_status} → {new_status}\n"
                         f"🕒 {now_vn()}"
@@ -162,12 +197,10 @@ def auto_check_loop(app):
                     except:
                         pass
 
-# ========== MAIN (KHÔNG DÙNG asyncio.run NỮA) ==========
+# ========== MAIN ==========
 def main():
-    # Flask
     threading.Thread(target=run_flask, daemon=True).start()
 
-    # Telegram bot
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -175,7 +208,6 @@ def main():
     app.add_handler(CommandHandler("danhsach", danhsach))
     app.add_handler(CallbackQueryHandler(handle_buttons))
 
-    # Auto check
     threading.Thread(target=auto_check_loop, args=(app,), daemon=True).start()
 
     print("✅ BOT ĐÃ CHẠY ỔN ĐỊNH")
