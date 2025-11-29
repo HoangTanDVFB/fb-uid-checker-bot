@@ -1,57 +1,71 @@
+import os
 import requests
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
     ContextTypes,
-    filters
+    filters,
 )
 
+TOKEN = os.getenv("7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o")
+WEBHOOK_URL = os.getenv("https://fb-uid-checker-bot.onrender.com")  # ví dụ: https://your-app.onrender.com/webhook
+
+app = Flask(__name__)
+telegram_app = Application.builder().token(TOKEN).build()
+
+# ====== TELEGRAM HANDLERS ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Gửi mình link Facebook để kiểm tra nhé!")
 
 def check_facebook_profile(url: str) -> str:
     headers = {"User-Agent": "Mozilla/5.0"}
-
     try:
         r = requests.get(url, headers=headers, timeout=10)
-
         if r.status_code == 404:
-            return "❌ Tài khoản không tồn tại (404)."
-
-        if "This Page Isn't Available" in r.text or "Không hiển thị" in r.text:
-            return "⚠️ Tài khoản bị ẩn, bị chặn, hoặc không hiển thị công khai."
-
+            return "❌ Tài khoản không tồn tại."
+        if "This Page Isn't Available" in r.text:
+            return "⚠️ Profile không hiển thị công khai."
         if r.status_code == 200:
-            return "✅ Tài khoản đang tồn tại & hiển thị công khai."
-
-        return f"⚠️ Không xác định được. HTTP: {r.status_code}"
-
+            return "✅ Tài khoản tồn tại & hiển thị công khai."
+        return f"⚠️ Không xác định. HTTP {r.status_code}"
     except Exception as e:
         return f"⚠️ Lỗi: {e}"
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-
     if not url.startswith("http"):
-        await update.message.reply_text("❗ Vui lòng gửi 1 link Facebook hợp lệ.")
+        await update.message.reply_text("❗ Vui lòng gửi 1 link Facebook.")
         return
-
     result = check_facebook_profile(url)
     await update.message.reply_text(result)
 
-def main():
-    TOKEN = "7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o"
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check))
 
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
+# ====== FLASK WEBHOOK SERVER ======
+@app.route("/")
+def home():
+    return "Telegram bot is running!"
 
-    # 👇 nhận mọi tin nhắn văn bản không phải lệnh
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check))
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.json, telegram_app.bot)
+    telegram_app.update_queue.put_nowait(update)
+    return "OK"
 
-    print("Bot đang chạy...")
-    app.run_polling()
+# ====== SET WEBHOOK ======
+@app.before_first_request
+def set_webhook():
+    telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}")
+    print("Webhook set:", WEBHOOK_URL)
 
+# ====== RUN SERVER ======
 if __name__ == "__main__":
-    main()
+    telegram_app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=WEBHOOK_URL,
+    )
