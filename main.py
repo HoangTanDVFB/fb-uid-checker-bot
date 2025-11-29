@@ -1,14 +1,18 @@
 import requests
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Gửi mình link Facebook để kiểm tra nhé!")
 
 def check_facebook_profile(url: str) -> str:
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
         r = requests.get(url, headers=headers, timeout=10)
@@ -22,7 +26,7 @@ def check_facebook_profile(url: str) -> str:
         if r.status_code == 200:
             return "✅ Tài khoản đang tồn tại & hiển thị công khai."
 
-        return f"⚠️ Không xác định được. HTTP code: {r.status_code}"
+        return f"⚠️ Không xác định được. HTTP: {r.status_code}"
 
     except Exception as e:
         return f"⚠️ Lỗi: {e}"
@@ -42,12 +46,12 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("check", check))
-    app.add_handler(CommandHandler("", check))  # nhận luôn tin nhắn thường
+
+    # 👇 nhận mọi tin nhắn văn bản không phải lệnh
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check))
 
     print("Bot đang chạy...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
