@@ -45,47 +45,79 @@ def save_uids(data):
 def now_vn():
     return datetime.now(VN_TZ).strftime("%H:%M:%S %d/%m/%Y")
 
-# ========== AVATAR LIVE/DIE CHECK (FIX 100%) ==========
-def build_avatar_url(input_str: str) -> str:
-    input_str = input_str.strip()
+# =====================================================================
+# ========== FACEBOOK LIVE/DIE CHECK (ĐÃ THAY TOÀN BỘ CHO MÀY) ==========
+# =====================================================================
 
-    if input_str.startswith("http"):
-        m = re.search(r"profile\.php\?id=(\d+)", input_str)
-        if m:
-            return f"https://graph.facebook.com/{m.group(1)}/picture"
-        parts = input_str.rstrip("/").split("/")
-        return f"https://graph.facebook.com/{parts[-1]}/picture"
+def build_target_url(target: str):
+    target = target.strip()
 
-    if re.fullmatch(r"\d{5,}", input_str):
-        return f"https://graph.facebook.com/{input_str}/picture"
+    if "facebook.com" in target:
+        mobile = target.replace("www.facebook.com", "m.facebook.com")
+        mobile = mobile.replace("facebook.com", "m.facebook.com")
+        return mobile
 
-    return f"https://graph.facebook.com/{input_str}/picture"
+    if re.fullmatch(r"\d{5,}", target):
+        return f"https://m.facebook.com/profile.php?id={target}"
+
+    return f"https://m.facebook.com/{target}"
 
 
 def check_facebook_live(target: str) -> bool:
-    avatar_url = build_avatar_url(target)
+    url = build_target_url(target)
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        ),
+        "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8"
     }
 
     try:
-        r = requests.get(
-            avatar_url,
-            headers=headers,
-            timeout=10,
-            allow_redirects=True
-        )
+        r = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        html = r.text.lower()
+    except:
+        return False  # Không truy cập được → DIE
 
-        if r.status_code == 200 and "image" in r.headers.get("Content-Type", ""):
-            return True
-
-        if r.status_code == 404:
+    # --- DIE ---
+    die_signs = [
+        "bạn hiện không xem được nội dung này",
+        "this content isn't available",
+        "sorry, this content isn't available",
+        "nội dung không khả dụng",
+        "page isn't available",
+        "tài khoản bị vô hiệu hóa",
+        "memorialized"
+    ]
+    for k in die_signs:
+        if k in html:
             return False
 
-        return False
-    except:
-        return False
+    # --- LIVE ---
+    live_signs = [
+        "timeline",
+        "profile picture",
+        "add friend",
+        "thêm bạn bè",
+        "theo dõi",
+        "followers",
+        "bạn bè",
+        "about",
+        "photos",
+        "intro"
+    ]
+    for k in live_signs:
+        if k in html:
+            return True
+
+    # Mặc định: mở được trang nhưng ko thấy cảnh báo = LIVE
+    return True
+
+# =====================================================================
+# ======================= HẾT PHẦN ĐÃ THAY =============================
+# =====================================================================
+
 
 # ========== TELEGRAM COMMANDS ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -212,7 +244,7 @@ def auto_check_loop(app):
                     except:
                         pass
 
-                time.sleep(1.5)  # chống block avatar
+                time.sleep(1.5)  # tránh bị FB block request
 
 # ========== MAIN ==========
 def main():
