@@ -2,21 +2,19 @@ import os
 import requests
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-TOKEN = os.getenv("7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o")
-WEBHOOK_URL = os.getenv("https://fb-uid-checker-bot.onrender.com")  # ví dụ: https://your-app.onrender.com/webhook
+# ====== LẤY BIẾN MÔI TRƯỜNG ======
+TOKEN = os.getenv("BOT_TOKEN")  # tên biến môi trường trong Render
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # ví dụ: https://fb-uid-checker-bot.onrender.com/webhook
 
+# ====== FLASK APP ======
 app = Flask(__name__)
+
+# ====== TELEGRAM BOT ======
 telegram_app = Application.builder().token(TOKEN).build()
 
-# ====== TELEGRAM HANDLERS ======
+# ====== HANDLERS ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Gửi mình link Facebook để kiểm tra nhé!")
 
@@ -24,10 +22,8 @@ def check_facebook_profile(url: str) -> str:
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code == 404:
-            return "❌ Tài khoản không tồn tại."
-        if "This Page Isn't Available" in r.text:
-            return "⚠️ Profile không hiển thị công khai."
+        if r.status_code == 404 or "This Page Isn't Available" in r.text:
+            return "❌ Tài khoản không tồn tại hoặc không hiển thị công khai."
         if r.status_code == 200:
             return "✅ Tài khoản tồn tại & hiển thị công khai."
         return f"⚠️ Không xác định. HTTP {r.status_code}"
@@ -45,7 +41,7 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check))
 
-# ====== FLASK WEBHOOK SERVER ======
+# ====== FLASK ROUTES ======
 @app.route("/")
 def home():
     return "Telegram bot is running!"
@@ -59,7 +55,7 @@ def webhook():
 # ====== SET WEBHOOK ======
 @app.before_first_request
 def set_webhook():
-    telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}")
+    telegram_app.bot.set_webhook(url=WEBHOOK_URL)
     print("Webhook set:", WEBHOOK_URL)
 
 # ====== RUN SERVER ======
