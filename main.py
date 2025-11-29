@@ -1,5 +1,6 @@
 import os
 import requests
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -10,13 +11,16 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = os.getenv("BOT_TOKEN")  # Đặt biến môi trường TOKEN
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://your-app.onrender.com/webhook
+# ===== CONFIG =====
+TOKEN = os.getenv("BOT_TOKEN")  # trong Render, đặt biến môi trường TOKEN = 7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # trong Render, đặt biến môi trường WEBHOOK_URL = https://fb-uid-checker-bot.onrender.com/webhook
+PORT = int(os.environ.get("PORT", 10000))
 
 app = Flask(__name__)
+
+# ===== TELEGRAM BOT =====
 telegram_app = Application.builder().token(TOKEN).build()
 
-# ====== TELEGRAM HANDLERS ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Gửi mình link Facebook để kiểm tra nhé!")
 
@@ -45,8 +49,8 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check))
 
-# ====== FLASK WEBHOOK SERVER ======
-@app.route("/")
+# ===== FLASK WEBHOOK =====
+@app.route("/", methods=["GET"])
 def home():
     return "Telegram bot is running!"
 
@@ -56,15 +60,19 @@ def webhook():
     telegram_app.update_queue.put_nowait(update)
     return "OK"
 
-# ====== ĐẶT WEBHOOK NGAY ======
-if WEBHOOK_URL:
-    telegram_app.bot.set_webhook(url=WEBHOOK_URL)
+# ===== SET WEBHOOK =====
+async def setup_webhook():
+    await telegram_app.bot.set_webhook(url=WEBHOOK_URL)
     print("Webhook set:", WEBHOOK_URL)
 
-# ====== RUN SERVER ======
+# ===== RUN BOT =====
 if __name__ == "__main__":
+    # set webhook trước khi chạy
+    asyncio.run(setup_webhook())
+    
+    # chạy webhook server
     telegram_app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
+        port=PORT,
         webhook_url=WEBHOOK_URL,
     )
