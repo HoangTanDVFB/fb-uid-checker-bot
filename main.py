@@ -71,7 +71,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling()  # ⬅️ FIX: KHÔNG DÙNG allowed_updates
 
 
 if __name__ == "__main__":
