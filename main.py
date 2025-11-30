@@ -1,70 +1,63 @@
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CommandHandler
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes
 import cloudscraper
 from bs4 import BeautifulSoup
-import re
 
 logging.basicConfig(level=logging.INFO)
 
-scraper = cloudscraper.create_scraper(browser={
-    "browser": "chrome",
-    "platform": "windows",
-    "mobile": False
-})
+scraper = cloudscraper.create_scraper(
+    browser={
+        "browser": "chrome",
+        "platform": "windows",
+        "mobile": False
+    }
+)
 
-# =============== EXTRACT UID OR CLEAN URL ==================
+# ================= UTIL =================
 
 def normalize_facebook_url(url):
     if "facebook.com" not in url:
         return None
     return url.strip().split("?")[0]
 
-# =============== SCRAPER LIVE/DIE CHECK ==================
+# ================= CHECK LIVE/DIE =================
 
 def check_facebook_live(url):
     try:
         r = scraper.get(url, timeout=10)
 
-        # DIE nếu status != 200
         if r.status_code != 200:
             return "DIE"
 
         html = r.text
 
-        # Các dấu hiệu profile không tồn tại
         die_signals = [
             "Sorry, this content isn't available",
-            "This content isn't available",
             "This Page Isn't Available",
             "Content Not Found",
         ]
-        if any(text in html for text in die_signals):
+        if any(sig in html for sig in die_signals):
             return "DIE"
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # LIVE nếu có meta profile
         if soup.find("meta", {"property": "al:android:url"}):
             return "LIVE"
 
-        # LIVE nếu có profile_id trong html
         if "profile_id" in html:
             return "LIVE"
 
-        # Không chắc chắn → UNKNOWN
+        return "UNKNOWN"
+    except:
         return "UNKNOWN"
 
-    except Exception as e:
-        return "UNKNOWN"
-
-# =============== TELEGRAM BOT HANDLERS ==================
+# ================= HANDLERS =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Gửi link Facebook để check Live/Die.")
 
 async def check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     url = update.message.text.strip()
     clean_url = normalize_facebook_url(url)
 
@@ -85,10 +78,15 @@ async def check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg)
 
-# =============== MAIN BOT ==================
+# ================= MAIN =================
 
-async def main():
-    BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+def main():
+    import os
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN chưa được set trong Render")
+        return
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -96,8 +94,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_handler))
 
     print("Bot is running...")
-    await app.run_polling()
+    app.run_polling()     # ✔ KHÔNG DÙNG async, KHÔNG lỗi loop
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
