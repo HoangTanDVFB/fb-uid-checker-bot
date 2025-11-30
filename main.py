@@ -63,7 +63,7 @@ async def handle_message(update, context):
 
 
 def main():
-    token = os.getenv("7717716622:AAH3kFzfE5nTmEfWoGzbDlpgmn56tT49L_o")
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("Thiếu TELEGRAM_BOT_TOKEN trong environment variables")
 
@@ -77,3 +77,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
