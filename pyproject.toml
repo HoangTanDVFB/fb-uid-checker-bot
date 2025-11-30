@@ -1,0 +1,6 @@
+[project]
+name = "render-app"
+version = "1.0.0"
+
+[tool.render]
+python_version = "3.11"
