@@ -1,78 +1,103 @@
-# file: main.py
-import os
-import re
-import requests
+import logging
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CommandHandler
+import cloudscraper
 from bs4 import BeautifulSoup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+import re
 
+logging.basicConfig(level=logging.INFO)
 
-def check_facebook(url: str) -> str:
-    """
-    Trả về LIVE / DIE / UNKNOWN dựa trên HTML Facebook.
-    """
+scraper = cloudscraper.create_scraper(browser={
+    "browser": "chrome",
+    "platform": "windows",
+    "mobile": False
+})
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
+# =============== EXTRACT UID OR CLEAN URL ==================
 
+def normalize_facebook_url(url):
+    if "facebook.com" not in url:
+        return None
+    return url.strip().split("?")[0]
+
+# =============== SCRAPER LIVE/DIE CHECK ==================
+
+def check_facebook_live(url):
     try:
-        res = requests.get(url, headers=headers, timeout=15)
-    except Exception:
-        return "DIE"
+        r = scraper.get(url, timeout=10)
 
-    html = res.text.lower()
-    soup = BeautifulSoup(res.text, "html.parser")
+        # DIE nếu status != 200
+        if r.status_code != 200:
+            return "DIE"
 
-    if "bạn hiện không xem được nội dung này" in html:
-        return "DIE"
+        html = r.text
 
-    if (
-        soup.find("img")
-        and ("nhắn tin" in html or "thêm bạn bè" in html or "bài viết" in html)
-    ):
-        return "LIVE"
+        # Các dấu hiệu profile không tồn tại
+        die_signals = [
+            "Sorry, this content isn't available",
+            "This content isn't available",
+            "This Page Isn't Available",
+            "Content Not Found",
+        ]
+        if any(text in html for text in die_signals):
+            return "DIE"
 
-    return "UNKNOWN"
+        soup = BeautifulSoup(html, "html.parser")
 
+        # LIVE nếu có meta profile
+        if soup.find("meta", {"property": "al:android:url"}):
+            return "LIVE"
 
-async def start(update, context):
+        # LIVE nếu có profile_id trong html
+        if "profile_id" in html:
+            return "LIVE"
+
+        # Không chắc chắn → UNKNOWN
+        return "UNKNOWN"
+
+    except Exception as e:
+        return "UNKNOWN"
+
+# =============== TELEGRAM BOT HANDLERS ==================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Gửi link Facebook để check Live/Die.")
 
+async def check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-async def handle_message(update, context):
-    text = update.message.text.strip()
+    url = update.message.text.strip()
+    clean_url = normalize_facebook_url(url)
 
-    match = re.search(r"https?://(www\.)?facebook\.com/[^\s]+", text)
-    if not match:
-        await update.message.reply_text("Hãy gửi 1 URL Facebook hợp lệ.")
+    if not clean_url:
+        await update.message.reply_text("❌ Vui lòng gửi link Facebook hợp lệ.")
         return
 
-    url = match.group(0)
     await update.message.reply_text("⏳ Đang check...")
 
-    result = check_facebook(url)
+    result = check_facebook_live(clean_url)
 
     if result == "LIVE":
-        await update.message.reply_text("✅ LIVE – Profile hiển thị bình thường.")
+        msg = "🟢 LIVE — Tài khoản tồn tại."
     elif result == "DIE":
-        await update.message.reply_text("❌ DIE – Trang bị hạn chế / không xem được.")
+        msg = "🔴 DIE — Tài khoản không tồn tại."
     else:
-        await update.message.reply_text("⚠️ UNKNOWN – Không xác định được.")
+        msg = "⚠️ UNKNOWN — Không xác định được."
 
+    await update.message.reply_text(msg)
 
-def main():
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token:
-        raise RuntimeError("Thiếu TELEGRAM_BOT_TOKEN trong ENV.")
+# =============== MAIN BOT ==================
 
-    app = Application.builder().token(token).build()
+async def main():
+    BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_handler))
 
     print("Bot is running...")
-    app.run_polling()  # ⬅️ FIX: KHÔNG DÙNG allowed_updates
-
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
